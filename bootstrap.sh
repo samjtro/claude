@@ -431,6 +431,29 @@ setup_mcp_defaults() {
     fi
 }
 
+# Function to setup refactor system
+setup_refactor_system() {
+    local claude_lib_dir="$HOME/.claude/lib"
+    local refactor_sessions_dir="$HOME/.claude/refactor/sessions"
+    
+    info "Setting up refactor workflow system..."
+    
+    # Create directory structure
+    mkdir -p "$claude_lib_dir/refactor"
+    mkdir -p "$refactor_sessions_dir"
+    
+    # Copy refactor system files
+    if [[ -d "$SCRIPT_DIR/lib/refactor" ]]; then
+        cp -r "$SCRIPT_DIR/lib/refactor/"* "$claude_lib_dir/refactor/"
+        chmod +x "$claude_lib_dir/refactor/commands/"*.sh
+        chmod +x "$claude_lib_dir/refactor/workflows/"*.sh
+        success "✓ Refactor system installed to: $claude_lib_dir/refactor"
+        success "✓ Refactor sessions directory created at: $refactor_sessions_dir"
+    else
+        warn "⚠️  No refactor system found to install"
+    fi
+}
+
 # Function to create CLAUDE.md
 create_claude_md() {
     local project_dir="${1:-$(pwd)}"
@@ -534,6 +557,7 @@ main() {
     setup_codex
     setup_agent_examples
     setup_mcp_defaults
+    setup_refactor_system
     
     # Step 8: Optionally create CLAUDE.md
     echo
@@ -582,6 +606,8 @@ main() {
     info "Codex Integration is available in: $HOME/.claude/codex/"
     info "Agent Examples are available in: $HOME/.claude/examples/"
     info "MCP Configuration is available in: $HOME/.claude/mcp/"
+    info "Refactor System is available in: $HOME/.claude/lib/refactor/"
+    info "Refactor Sessions are saved in: $HOME/.claude/refactor/sessions/"
     echo
 }
 

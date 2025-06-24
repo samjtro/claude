@@ -36,6 +36,7 @@ Installed to `~/.claude/commands/`:
 - `/apm-plan` - Manage implementation plans
 - `/apm-review` - Review work progress
 - `/apm-task` - Generate task assignments
+- `/refactor` - **NEW** Comprehensive refactor workflow with multi-agent orchestration
 
 ### 3. Agent Prompts
 Installed to `~/.claude/prompts/`:
@@ -93,6 +94,30 @@ cp configs/claude_desktop_config_extended.json ~/Library/Application\ Support/Cl
 1. Source your shell profile: `source ~/.zshrc` or `source ~/.bashrc`
 2. Verify `.claude_env` exists and contains your keys
 3. Check that your shell profile sources `.claude_env`
+
+## Refactor System (NEW)
+
+The `/refactor` command provides a comprehensive workflow for managing complex codebase changes:
+
+### Usage
+```bash
+/refactor path/to/your-refactor-guide.md
+```
+
+### Workflow Phases
+1. **Questions Generation** - Claude analyzes your guide and asks clarifying questions
+2. **Plan Creation** - Develops a detailed implementation plan with iterative refinement
+3. **Multi-Agent Development** - Orchestrates Opus and Sonnet instances for implementation
+4. **Review & Validation** - Comprehensive review of all changes
+
+### Features
+- Timestamped session management
+- Editor integration for interactive Q&A
+- Phase-based task distribution
+- Automatic test generation and execution
+- Comprehensive review reports
+
+See `lib/refactor/README.md` for detailed documentation.
 
 ## Advanced Usage
 
