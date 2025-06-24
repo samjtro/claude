@@ -1,0 +1,282 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Color codes
+readonly RED='\033[0;31m'
+readonly GREEN='\033[0;32m'
+readonly YELLOW='\033[1;33m'
+readonly BLUE='\033[0;34m'
+readonly NC='\033[0m'
+
+# Utility functions
+cecho() { echo -e "${2:-$NC}$1${NC}"; }
+error() { cecho "$1" "$RED" >&2; exit "${2:-1}"; }
+warn() { cecho "$1" "$YELLOW"; }
+info() { cecho "$1" "$BLUE"; }
+success() { cecho "$1" "$GREEN"; }
+
+# Configuration
+readonly CLAUDE_CONFIG_DIR="$HOME/Library/Application Support/Claude"
+readonly REPO_URL="https://github.com/samjtro/claude.git"
+readonly TEMP_DIR="/tmp/claude-bootstrap-$$"
+
+# Clone the repository to get source files
+info "🚀 Claude Bootstrap - Cloning repository..."
+git clone "$REPO_URL" "$TEMP_DIR" || error "Failed to clone repository"
+cd "$TEMP_DIR"
+readonly SCRIPT_DIR="$TEMP_DIR"
+
+info "🚀 Claude Bootstrap - Setting up Claude Desktop with QoL features"
+echo
+
+# Check if Claude Desktop is installed
+if [[ ! -d "$CLAUDE_CONFIG_DIR" ]]; then
+    error "Claude Desktop not found. Please install Claude Desktop first."
+fi
+
+# Function to backup existing config
+backup_config() {
+    local config_file="$CLAUDE_CONFIG_DIR/claude_desktop_config.json"
+    if [[ -f "$config_file" ]]; then
+        local backup_file="${config_file}.backup.$(date +%Y%m%d_%H%M%S)"
+        cp "$config_file" "$backup_file"
+        success "✓ Backed up existing config to: $backup_file"
+    fi
+}
+
+# Function to merge MCP servers into existing config
+merge_mcp_config() {
+    local config_file="$CLAUDE_CONFIG_DIR/claude_desktop_config.json"
+    local new_config="$SCRIPT_DIR/configs/claude_desktop_config.json"
+    
+    if [[ ! -f "$config_file" ]]; then
+        # No existing config, copy new one
+        cp "$new_config" "$config_file"
+        success "✓ Created new Claude config with MCP servers"
+    else
+        # Merge configurations using jq
+        if command -v jq &> /dev/null; then
+            # Create merged config
+            jq -s '.[0] * .[1]' "$config_file" "$new_config" > "$config_file.tmp"
+            mv "$config_file.tmp" "$config_file"
+            success "✓ Merged MCP servers into existing config"
+        else
+            warn "⚠️  jq not found. Installing jq is recommended for config merging."
+            warn "   Run: brew install jq (macOS) or apt-get install jq (Linux)"
+            warn "   Alternatively, manually merge configs from: $new_config"
+        fi
+    fi
+}
+
+# Function to setup environment variables
+setup_env_vars() {
+    local env_file="$HOME/.claude_env"
+    
+    info "Setting up environment variables..."
+    
+    # Check if variables are already set
+    local need_anthropic=true
+    local need_openrouter=true
+    
+    if [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
+        need_anthropic=false
+        success "✓ ANTHROPIC_API_KEY already set"
+    fi
+    
+    if [[ -n "${OPENROUTER_API_KEY:-}" ]]; then
+        need_openrouter=false
+        success "✓ OPENROUTER_API_KEY already set"
+    fi
+    
+    # Create env file if needed
+    if [[ "$need_anthropic" == true ]] || [[ "$need_openrouter" == true ]]; then
+        cat > "$env_file" << 'EOF'
+# Claude Environment Variables
+# Add your API keys here and source this file in your shell profile
+
+EOF
+        
+        if [[ "$need_anthropic" == true ]]; then
+            echo "export ANTHROPIC_API_KEY=your-key-here" >> "$env_file"
+        fi
+        
+        if [[ "$need_openrouter" == true ]]; then
+            echo "export OPENROUTER_API_KEY=your-key-here" >> "$env_file"
+            echo "export OPENROUTER_DEFAULT_MODEL=gpt-4" >> "$env_file"
+        fi
+        
+        warn "⚠️  Please edit $env_file and add your API keys"
+        
+        # Add to shell profile
+        local shell_profile=""
+        if [[ -f "$HOME/.zshrc" ]]; then
+            shell_profile="$HOME/.zshrc"
+        elif [[ -f "$HOME/.bashrc" ]]; then
+            shell_profile="$HOME/.bashrc"
+        elif [[ -f "$HOME/.bash_profile" ]]; then
+            shell_profile="$HOME/.bash_profile"
+        fi
+        
+        if [[ -n "$shell_profile" ]]; then
+            if ! grep -q "source.*\.claude_env" "$shell_profile"; then
+                echo "" >> "$shell_profile"
+                echo "# Claude environment variables" >> "$shell_profile"
+                echo "[[ -f \"\$HOME/.claude_env\" ]] && source \"\$HOME/.claude_env\"" >> "$shell_profile"
+                info "Added source command to $shell_profile"
+            fi
+        fi
+    fi
+}
+
+# Function to install Node.js if needed
+check_node() {
+    if ! command -v node &> /dev/null; then
+        warn "⚠️  Node.js not found. MCP servers require Node.js."
+        info "   Install Node.js from: https://nodejs.org/"
+        info "   Or use: brew install node (macOS)"
+        return 1
+    else
+        success "✓ Node.js found: $(node --version)"
+        return 0
+    fi
+}
+
+# Function to setup APM commands
+setup_apm_commands() {
+    local claude_commands_dir="$HOME/.claude/commands"
+    mkdir -p "$claude_commands_dir"
+    
+    info "Setting up APM commands..."
+    cp -r "$SCRIPT_DIR/docs/apm/commands/"* "$claude_commands_dir/"
+    success "✓ APM commands installed to: $claude_commands_dir"
+}
+
+# Function to setup agent prompts
+setup_agent_prompts() {
+    local claude_prompts_dir="$HOME/.claude/prompts"
+    mkdir -p "$claude_prompts_dir"
+    
+    info "Setting up agent prompts..."
+    cp -r "$SCRIPT_DIR/docs/agents/prompts/"* "$claude_prompts_dir/"
+    success "✓ Agent prompts installed to: $claude_prompts_dir"
+}
+
+# Function to create CLAUDE.md
+create_claude_md() {
+    local project_dir="${1:-$(pwd)}"
+    local claude_md="$project_dir/CLAUDE.md"
+    
+    if [[ -f "$claude_md" ]]; then
+        warn "⚠️  CLAUDE.md already exists in $project_dir"
+        return
+    fi
+    
+    cat > "$claude_md" << 'EOF'
+# Claude Project Configuration
+
+This file provides context and configuration for Claude Desktop.
+
+## Project Overview
+[Describe your project here]
+
+## Key Commands
+- Lint: `npm run lint` or `[your lint command]`
+- Test: `npm test` or `[your test command]`
+- Build: `npm run build` or `[your build command]`
+
+## Project Structure
+```
+src/
+├── components/
+├── utils/
+└── ...
+```
+
+## Development Guidelines
+- [Add your project-specific guidelines]
+
+## APM Commands Available
+- `/apm-manager` - Initialize project management
+- `/apm-implement` - Create task-specific agents
+- `/apm-agents` - Launch multi-agent development team
+- `/apm-memory` - Manage persistent knowledge base
+- `/apm-handover` - Manage context window transitions
+
+## Notes
+- [Add any additional notes or context]
+EOF
+
+    success "✓ Created CLAUDE.md template in: $project_dir"
+}
+
+# Main installation flow
+main() {
+    echo "📋 Installation Steps:"
+    echo "1. Check Node.js installation"
+    echo "2. Backup existing Claude config"
+    echo "3. Setup MCP servers configuration"
+    echo "4. Configure environment variables"
+    echo "5. Install APM commands and agent prompts"
+    echo "6. Create CLAUDE.md template"
+    echo
+    
+    read -p "Continue with installation? [Y/n] " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]] && [[ -n $REPLY ]]; then
+        info "Installation cancelled."
+        exit 0
+    fi
+    
+    echo
+    
+    # Step 1: Check Node.js
+    if ! check_node; then
+        warn "⚠️  Continuing without Node.js - MCP servers will not work"
+    fi
+    
+    # Step 2: Backup existing config
+    backup_config
+    
+    # Step 3: Setup MCP config
+    merge_mcp_config
+    
+    # Step 4: Setup environment variables
+    setup_env_vars
+    
+    # Step 5: Setup APM and agent files
+    setup_apm_commands
+    setup_agent_prompts
+    
+    # Step 6: Optionally create CLAUDE.md
+    echo
+    read -p "Create CLAUDE.md template in current directory? [y/N] " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        create_claude_md
+    fi
+    
+    echo
+    success "🎉 Claude Bootstrap completed successfully!"
+    echo
+    info "Next steps:"
+    info "1. Add your API keys to: $HOME/.claude_env"
+    info "2. Restart your terminal or run: source $HOME/.claude_env"
+    info "3. Restart Claude Desktop to load new configuration"
+    echo
+    info "APM Commands are available in: $HOME/.claude/commands/"
+    info "Agent Prompts are available in: $HOME/.claude/prompts/"
+    echo
+}
+
+# Cleanup function
+cleanup() {
+    if [[ -d "$TEMP_DIR" ]]; then
+        rm -rf "$TEMP_DIR"
+    fi
+}
+
+# Ensure cleanup on exit
+trap cleanup EXIT
+
+# Run main function
+main "$@"
