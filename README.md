@@ -1,10 +1,23 @@
 # my claude code config
 
-## Bootstrap
+## quick start
 
 ```bash
-curl https://raw.githubusercontent.com/samjtro/claude/refs/heads/main/bootstrap.sh > bootstrap.sh && chmod +x bootstrap.sh && ./bootstrap.sh
+curl https://raw.githubusercontent.com/samjtro/claude/refs/heads/main/bootstrap.sh > bootstrap.sh \
+chmod +x bootstrap.sh \
+./bootstrap.sh
 ```
+
+The bootstrap script will:
+1. **Detect your existing authentication method** (API key or Claude Code /login session)
+2. **Prompt you to confirm or change** your authentication preference
+3. **Configure everything automatically** based on your choice
+
+### Authentication Options
+
+- **API Key**: Uses `ANTHROPIC_API_KEY` environment variable
+- **Session**: Uses `claude login` for browser-based authentication
+- **Dual**: Supports both methods simultaneously
 
 ## What Gets Installed
 
@@ -59,30 +72,6 @@ For additional MCP servers (GitHub, filesystem), use the extended config:
 cp configs/claude_desktop_config_extended.json ~/Library/Application\ Support/Claude/claude_desktop_config.json
 ```
 
-### 3. Project-Specific Configuration
-Create a `CLAUDE.md` file in your project root:
-```bash
-# In your project directory
-../path/to/claude/bootstrap.sh
-# Choose "y" when prompted to create CLAUDE.md
-```
-
-## Directory Structure
-
-```
-claude/
-├── bootstrap.sh              # Main installation script
-├── configs/                  # Configuration templates
-│   ├── claude_desktop_config.json
-│   └── claude_desktop_config_extended.json
-├── scripts/                  # Utility scripts
-│   └── setup-env.sh         # Environment setup helper
-├── docs/                    # Documentation and commands
-│   ├── apm/commands/        # APM command files
-│   └── agents/prompts/      # Agent prompt templates
-└── README.md                # This file
-```
-
 ## Requirements
 
 - macOS or Linux
@@ -124,22 +113,3 @@ Add custom MCP servers to your config:
   }
 }
 ```
-
-### Project Templates
-The CLAUDE.md file supports project-specific configurations:
-- Custom commands and scripts
-- Project structure documentation
-- Development guidelines
-- Build and test commands
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## License
-
-This project extracts and simplifies features from [claudebox](https://github.com/samjtro/claudebox).
-
-## Acknowledgments
-
-Based on the excellent work in [claudebox](https://github.com/samjtro/claudebox) by @samjtro.

@@ -92,63 +92,242 @@ merge_mcp_config() {
     fi
 }
 
-# Function to setup environment variables
+# Function to detect authentication method
+detect_auth_method() {
+    local auth_method="none"
+    local auth_details=""
+    local auth_pref_file="$HOME/.claude/auth_preferences.json"
+    
+    info "🔍 Detecting existing authentication method..."
+    
+    # First check for saved authentication preferences
+    if [[ -f "$auth_pref_file" ]] && command -v jq &> /dev/null; then
+        local saved_method=$(jq -r '.authMethod // "none"' "$auth_pref_file" 2>/dev/null)
+        if [[ "$saved_method" != "none" ]]; then
+            info "Found saved authentication preference: $saved_method"
+        fi
+    fi
+    
+    # Check for API key authentication
+    if [[ -n "${ANTHROPIC_API_KEY:-}" ]] || [[ -f "$HOME/.claude_env" ]] && grep -q "ANTHROPIC_API_KEY" "$HOME/.claude_env" 2>/dev/null; then
+        auth_method="api_key"
+        auth_details="Environment variable (ANTHROPIC_API_KEY)"
+    fi
+    
+    # Check if Claude Code CLI is authenticated via /login
+    # Since Claude Code uses ephemeral session auth, we check if the CLI is installed
+    # and try to detect if user has active session by checking claude CLI status
+    if command -v claude &> /dev/null; then
+        # Try to run a simple claude command to check if authenticated
+        if claude --version &> /dev/null; then
+            # If we already detected API key, this might be dual auth
+            if [[ "$auth_method" == "api_key" ]]; then
+                auth_method="dual"
+                auth_details="Both API key and Claude Code session"
+            else
+                auth_method="session"
+                auth_details="Claude Code /login session"
+            fi
+        fi
+    fi
+    
+    echo "$auth_method|$auth_details"
+}
+
+# Function to prompt for authentication method
+prompt_auth_method() {
+    local current_auth="$1"
+    local current_details="$2"
+    
+    echo
+    info "🔐 Authentication Configuration"
+    echo
+    
+    if [[ "$current_auth" != "none" ]]; then
+        success "Current authentication method: $current_auth"
+        info "Details: $current_details"
+        echo
+        read -p "Keep current authentication method? [Y/n] " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]] || [[ -z $REPLY ]]; then
+            # Save current auth preference
+            save_auth_preferences "$current_auth"
+            return 0
+        fi
+    else
+        warn "⚠️  No authentication method detected"
+    fi
+    
+    echo
+    info "Select authentication method:"
+    echo "1) API Key (Environment variable)"
+    echo "2) Claude Code /login (Session-based)"
+    echo "3) Both (API key + Session)"
+    echo "4) Skip authentication setup"
+    echo
+    read -p "Enter choice [1-4]: " -n 1 -r auth_choice
+    echo
+    
+    case "$auth_choice" in
+        1)
+            setup_api_key_auth
+            save_auth_preferences "api_key"
+            ;;
+        2)
+            setup_session_auth
+            save_auth_preferences "session"
+            ;;
+        3)
+            setup_api_key_auth
+            setup_session_auth
+            save_auth_preferences "dual"
+            ;;
+        4)
+            info "Skipping authentication setup"
+            ;;
+        *)
+            warn "Invalid choice. Skipping authentication setup"
+            ;;
+    esac
+}
+
+# Function to setup API key authentication
+setup_api_key_auth() {
+    local env_file="$HOME/.claude_env"
+    
+    info "Setting up API key authentication..."
+    
+    # Check if API key is already set
+    if [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
+        success "✓ ANTHROPIC_API_KEY already set in environment"
+        return
+    fi
+    
+    # Check if env file exists with API key
+    if [[ -f "$env_file" ]] && grep -q "ANTHROPIC_API_KEY" "$env_file"; then
+        local existing_key=$(grep "ANTHROPIC_API_KEY" "$env_file" | cut -d'=' -f2)
+        if [[ "$existing_key" != "your-key-here" ]] && [[ -n "$existing_key" ]]; then
+            success "✓ ANTHROPIC_API_KEY found in $env_file"
+            return
+        fi
+    fi
+    
+    # Create or update env file
+    if [[ ! -f "$env_file" ]]; then
+        cat > "$env_file" << 'EOF'
+# Claude Environment Variables
+# Add your API keys here and source this file in your shell profile
+
+EOF
+    fi
+    
+    if ! grep -q "ANTHROPIC_API_KEY" "$env_file"; then
+        echo "export ANTHROPIC_API_KEY=your-key-here" >> "$env_file"
+    fi
+    
+    warn "⚠️  Please edit $env_file and add your Anthropic API key"
+    info "   Get your API key from: https://console.anthropic.com/account/keys"
+    
+    # Add to shell profile
+    local shell_profile=""
+    if [[ -f "$HOME/.zshrc" ]]; then
+        shell_profile="$HOME/.zshrc"
+    elif [[ -f "$HOME/.bashrc" ]]; then
+        shell_profile="$HOME/.bashrc"
+    elif [[ -f "$HOME/.bash_profile" ]]; then
+        shell_profile="$HOME/.bash_profile"
+    fi
+    
+    if [[ -n "$shell_profile" ]]; then
+        if ! grep -q "source.*\.claude_env" "$shell_profile"; then
+            echo "" >> "$shell_profile"
+            echo "# Claude environment variables" >> "$shell_profile"
+            echo "[[ -f \"\$HOME/.claude_env\" ]] && source \"\$HOME/.claude_env\"" >> "$shell_profile"
+            info "Added source command to $shell_profile"
+        fi
+    fi
+}
+
+# Function to setup session authentication
+setup_session_auth() {
+    info "Setting up Claude Code session authentication..."
+    
+    # Check if Claude Code CLI is installed
+    if ! command -v claude &> /dev/null; then
+        warn "⚠️  Claude Code CLI not found"
+        info "   Install Claude Code: npm install -g @anthropic-ai/claude-code"
+        return
+    fi
+    
+    success "✓ Claude Code CLI detected"
+    echo
+    info "To authenticate with Claude Code:"
+    info "1. Run: claude login"
+    info "2. Follow the browser authentication flow"
+    info "3. Your session will be active for this terminal"
+    echo
+    info "Note: Claude Code uses ephemeral sessions."
+    info "You'll need to run 'claude login' for each new terminal session."
+}
+
+# Function to save authentication preferences
+save_auth_preferences() {
+    local auth_method="$1"
+    local claude_settings_dir="$HOME/.claude"
+    local auth_config_file="$claude_settings_dir/auth_preferences.json"
+    
+    # Ensure directory exists
+    mkdir -p "$claude_settings_dir"
+    
+    # Create auth preferences JSON
+    cat > "$auth_config_file" << EOF
+{
+  "authMethod": "$auth_method",
+  "configuredAt": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+  "configVersion": "1.0",
+  "notes": {
+    "api_key": "Uses ANTHROPIC_API_KEY from environment",
+    "session": "Requires 'claude login' for each terminal session",
+    "dual": "Supports both API key and session authentication"
+  }
+}
+EOF
+    
+    success "✓ Saved authentication preferences to: $auth_config_file"
+}
+
+# Function to setup environment variables (enhanced)
 setup_env_vars() {
     local env_file="$HOME/.claude_env"
     
-    info "Setting up environment variables..."
+    info "Setting up additional environment variables..."
     
-    # Check if variables are already set
-    local need_anthropic=true
+    # Check for OpenRouter API key
     local need_openrouter=true
-    
-    if [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
-        need_anthropic=false
-        success "✓ ANTHROPIC_API_KEY already set"
-    fi
     
     if [[ -n "${OPENROUTER_API_KEY:-}" ]]; then
         need_openrouter=false
         success "✓ OPENROUTER_API_KEY already set"
     fi
     
-    # Create env file if needed
-    if [[ "$need_anthropic" == true ]] || [[ "$need_openrouter" == true ]]; then
-        cat > "$env_file" << 'EOF'
+    # Create env file if needed for additional keys
+    if [[ "$need_openrouter" == true ]]; then
+        if [[ ! -f "$env_file" ]]; then
+            cat > "$env_file" << 'EOF'
 # Claude Environment Variables
 # Add your API keys here and source this file in your shell profile
 
 EOF
-        
-        if [[ "$need_anthropic" == true ]]; then
-            echo "export ANTHROPIC_API_KEY=your-key-here" >> "$env_file"
         fi
         
-        if [[ "$need_openrouter" == true ]]; then
+        if ! grep -q "OPENROUTER_API_KEY" "$env_file"; then
+            echo "" >> "$env_file"
+            echo "# Optional: OpenRouter for additional models" >> "$env_file"
             echo "export OPENROUTER_API_KEY=your-key-here" >> "$env_file"
             echo "export OPENROUTER_DEFAULT_MODEL=gpt-4" >> "$env_file"
         fi
         
-        warn "⚠️  Please edit $env_file and add your API keys"
-        
-        # Add to shell profile
-        local shell_profile=""
-        if [[ -f "$HOME/.zshrc" ]]; then
-            shell_profile="$HOME/.zshrc"
-        elif [[ -f "$HOME/.bashrc" ]]; then
-            shell_profile="$HOME/.bashrc"
-        elif [[ -f "$HOME/.bash_profile" ]]; then
-            shell_profile="$HOME/.bash_profile"
-        fi
-        
-        if [[ -n "$shell_profile" ]]; then
-            if ! grep -q "source.*\.claude_env" "$shell_profile"; then
-                echo "" >> "$shell_profile"
-                echo "# Claude environment variables" >> "$shell_profile"
-                echo "[[ -f \"\$HOME/.claude_env\" ]] && source \"\$HOME/.claude_env\"" >> "$shell_profile"
-                info "Added source command to $shell_profile"
-            fi
-        fi
+        info "Optional: Add OPENROUTER_API_KEY to $env_file for additional models"
     fi
 }
 
@@ -303,17 +482,19 @@ EOF
 # Main installation flow
 main() {
     echo "📋 Installation Steps:"
-    echo "1. Check Node.js installation"
-    echo "2. Backup existing Claude config"
-    echo "3. Setup MCP servers configuration"
-    echo "4. Configure environment variables"
-    echo "5. Install APM components:"
+    echo "1. Detect existing authentication method"
+    echo "2. Configure authentication (confirm/change)"
+    echo "3. Check Node.js installation"
+    echo "4. Backup existing Claude config"
+    echo "5. Setup MCP servers configuration"
+    echo "6. Configure environment variables"
+    echo "7. Install APM components:"
     echo "   - APM commands and prompts"
     echo "   - Agent prompts and core scripts"
     echo "   - Codex integration"
     echo "   - Agent examples"
     echo "   - MCP default configuration"
-    echo "6. Create CLAUDE.md template"
+    echo "8. Create CLAUDE.md template"
     echo
     
     read -p "Continue with installation? [Y/n] " -n 1 -r
@@ -325,21 +506,27 @@ main() {
     
     echo
     
-    # Step 1: Check Node.js
+    # Step 1 & 2: Detect and configure authentication
+    local auth_info=$(detect_auth_method)
+    local current_auth=$(echo "$auth_info" | cut -d'|' -f1)
+    local current_details=$(echo "$auth_info" | cut -d'|' -f2)
+    prompt_auth_method "$current_auth" "$current_details"
+    
+    # Step 3: Check Node.js
     if ! check_node; then
         warn "⚠️  Continuing without Node.js - MCP servers will not work"
     fi
     
-    # Step 2: Backup existing config
+    # Step 4: Backup existing config
     backup_config
     
-    # Step 3: Setup MCP config
+    # Step 5: Setup MCP config
     merge_mcp_config
     
-    # Step 4: Setup environment variables
+    # Step 6: Setup additional environment variables
     setup_env_vars
     
-    # Step 5: Setup APM and agent files
+    # Step 7: Setup APM and agent files
     setup_apm_commands
     setup_agent_prompts
     setup_apm_prompts
@@ -348,7 +535,7 @@ main() {
     setup_agent_examples
     setup_mcp_defaults
     
-    # Step 6: Optionally create CLAUDE.md
+    # Step 8: Optionally create CLAUDE.md
     echo
     read -p "Create CLAUDE.md template in current directory? [y/N] " -n 1 -r
     echo
@@ -360,8 +547,32 @@ main() {
     success "🎉 Claude Bootstrap completed successfully!"
     echo
     info "Next steps:"
-    info "1. Add your API keys to: $HOME/.claude_env"
-    info "2. Restart your terminal or run: source $HOME/.claude_env"
+    
+    # Show relevant next steps based on authentication method
+    local final_auth_info=$(detect_auth_method)
+    local final_auth=$(echo "$final_auth_info" | cut -d'|' -f1)
+    
+    case "$final_auth" in
+        "api_key")
+            info "1. Ensure your API key is set in: $HOME/.claude_env"
+            info "2. Restart your terminal or run: source $HOME/.claude_env"
+            ;;
+        "session")
+            info "1. Run 'claude login' to authenticate with Claude Code"
+            info "2. Authentication is required for each new terminal session"
+            ;;
+        "dual")
+            info "1. API key configured in: $HOME/.claude_env"
+            info "2. Use 'claude login' for session-based features"
+            ;;
+        *)
+            warn "⚠️  No authentication configured"
+            info "1. Set up API key in: $HOME/.claude_env"
+            info "   OR"
+            info "2. Run 'claude login' for session authentication"
+            ;;
+    esac
+    
     info "3. Restart Claude Desktop (if using) to load new configuration"
     echo
     info "APM Commands are available in: $HOME/.claude/commands/"
