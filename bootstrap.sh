@@ -147,7 +147,7 @@ setup_apm_commands() {
     mkdir -p "$claude_commands_dir"
     
     info "Setting up APM commands..."
-    cp -r "$SCRIPT_DIR/docs/apm/commands/"* "$claude_commands_dir/"
+    cp -r "$SCRIPT_DIR/lib/apm/commands/"* "$claude_commands_dir/"
     success "✓ APM commands installed to: $claude_commands_dir"
 }
 
@@ -157,8 +157,75 @@ setup_agent_prompts() {
     mkdir -p "$claude_prompts_dir"
     
     info "Setting up agent prompts..."
-    cp -r "$SCRIPT_DIR/docs/agents/prompts/"* "$claude_prompts_dir/"
+    cp -r "$SCRIPT_DIR/lib/agents/prompts/"* "$claude_prompts_dir/"
     success "✓ Agent prompts installed to: $claude_prompts_dir"
+}
+
+# Function to setup APM prompts
+setup_apm_prompts() {
+    local claude_apm_dir="$HOME/.claude/apm"
+    mkdir -p "$claude_apm_dir"
+    
+    info "Setting up APM prompts..."
+    cp -r "$SCRIPT_DIR/lib/apm/prompts/"* "$claude_apm_dir/"
+    success "✓ APM prompts installed to: $claude_apm_dir"
+}
+
+# Function to setup agent core scripts
+setup_agent_core() {
+    local claude_agent_core_dir="$HOME/.claude/agent-core"
+    mkdir -p "$claude_agent_core_dir"
+    
+    info "Setting up agent core scripts..."
+    cp -r "$SCRIPT_DIR/lib/agents/core/"* "$claude_agent_core_dir/"
+    if [[ -f "$SCRIPT_DIR/lib/agents/claudebox-agents" ]]; then
+        cp "$SCRIPT_DIR/lib/agents/claudebox-agents" "$claude_agent_core_dir/"
+    fi
+    chmod +x "$claude_agent_core_dir"/*.sh
+    success "✓ Agent core scripts installed to: $claude_agent_core_dir"
+}
+
+# Function to setup Codex integration
+setup_codex() {
+    local claude_codex_dir="$HOME/.claude/codex"
+    mkdir -p "$claude_codex_dir"
+    
+    info "Setting up Codex integration..."
+    if [[ -d "$SCRIPT_DIR/lib/agents/codex" ]]; then
+        cp -r "$SCRIPT_DIR/lib/agents/codex/"* "$claude_codex_dir/"
+        chmod +x "$claude_codex_dir"/*.sh 2>/dev/null || true
+        success "✓ Codex integration installed to: $claude_codex_dir"
+    else
+        warn "⚠️  Codex integration files not found"
+    fi
+}
+
+# Function to setup agent examples
+setup_agent_examples() {
+    local claude_examples_dir="$HOME/.claude/examples"
+    mkdir -p "$claude_examples_dir"
+    
+    info "Setting up agent examples..."
+    if [[ -d "$SCRIPT_DIR/lib/agents/examples" ]]; then
+        cp -r "$SCRIPT_DIR/lib/agents/examples/"* "$claude_examples_dir/"
+        success "✓ Agent examples installed to: $claude_examples_dir"
+    else
+        warn "⚠️  Agent example files not found"
+    fi
+}
+
+# Function to setup MCP default configuration
+setup_mcp_defaults() {
+    local claude_mcp_dir="$HOME/.claude/mcp"
+    mkdir -p "$claude_mcp_dir"
+    
+    info "Setting up MCP default configuration..."
+    if [[ -f "$SCRIPT_DIR/lib/mcp/default-config.json" ]]; then
+        cp "$SCRIPT_DIR/lib/mcp/default-config.json" "$claude_mcp_dir/"
+        success "✓ MCP default config installed to: $claude_mcp_dir"
+    else
+        warn "⚠️  MCP default configuration not found"
+    fi
 }
 
 # Function to create CLAUDE.md
@@ -216,7 +283,12 @@ main() {
     echo "2. Backup existing Claude config"
     echo "3. Setup MCP servers configuration"
     echo "4. Configure environment variables"
-    echo "5. Install APM commands and agent prompts"
+    echo "5. Install APM components:"
+    echo "   - APM commands and prompts"
+    echo "   - Agent prompts and core scripts"
+    echo "   - Codex integration"
+    echo "   - Agent examples"
+    echo "   - MCP default configuration"
     echo "6. Create CLAUDE.md template"
     echo
     
@@ -246,6 +318,11 @@ main() {
     # Step 5: Setup APM and agent files
     setup_apm_commands
     setup_agent_prompts
+    setup_apm_prompts
+    setup_agent_core
+    setup_codex
+    setup_agent_examples
+    setup_mcp_defaults
     
     # Step 6: Optionally create CLAUDE.md
     echo
@@ -265,6 +342,11 @@ main() {
     echo
     info "APM Commands are available in: $HOME/.claude/commands/"
     info "Agent Prompts are available in: $HOME/.claude/prompts/"
+    info "APM Prompts are available in: $HOME/.claude/apm/"
+    info "Agent Core Scripts are available in: $HOME/.claude/agent-core/"
+    info "Codex Integration is available in: $HOME/.claude/codex/"
+    info "Agent Examples are available in: $HOME/.claude/examples/"
+    info "MCP Configuration is available in: $HOME/.claude/mcp/"
     echo
 }
 

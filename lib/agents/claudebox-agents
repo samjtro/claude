@@ -1,0 +1,252 @@
+#!/bin/bash
+# Claudebox Multi-Agent Framework CLI
+
+set -euo pipefail
+
+# Base directories
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+AGENT_DIR="$SCRIPT_DIR"
+CORE_DIR="$AGENT_DIR/core"
+PROMPT_DIR="$AGENT_DIR/prompts"
+CODEX_DIR="$AGENT_DIR/codex"
+
+# Source configurations
+source "$CORE_DIR/agent_loop.sh" 2>/dev/null || true
+source "$CODEX_DIR/codex_integration.sh" 2>/dev/null || true
+
+# Configuration
+AGENT_LOG_DIR="${AGENT_LOG_DIR:-$HOME/.claudebox/logs}"
+MEMORY_DIR="${MEMORY_DIR:-$HOME/.claudebox/memory}"
+
+# Ensure directories exist
+mkdir -p "$AGENT_LOG_DIR" "$MEMORY_DIR/agents"
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Pretty print functions
+print_header() {
+    echo -e "${BLUE}=== $1 ===${NC}"
+}
+
+print_success() {
+    echo -e "${GREEN}✓ $1${NC}"
+}
+
+print_error() {
+    echo -e "${RED}✗ $1${NC}"
+}
+
+print_warning() {
+    echo -e "${YELLOW}⚠ $1${NC}"
+}
+
+# Start the agent loop (deprecated - use iterate instead)
+start_agents() {
+    print_header "Starting Multi-Agent Development Loop"
+    
+    print_warning "The 'start' command is deprecated. Use 'iterate <plan-file>' instead."
+    echo ""
+    echo "The new iterate command provides:"
+    echo "  - Interactive Q&A before each iteration"
+    echo "  - Better control over development direction"
+    echo "  - Context-aware task selection"
+    echo ""
+    echo "Example: $0 iterate ./my-plan.md"
+    exit 1
+}
+
+# Run a single iteration with interactive Q&A
+iterate_agents() {
+    if [ $# -lt 1 ]; then
+        print_error "Missing required argument: plan file"
+        echo ""
+        echo "Usage: $0 iterate <plan-file> [iteration-number]"
+        echo ""
+        echo "The plan file should be a markdown file describing:"
+        echo "  - Project goals and objectives"
+        echo "  - Technical requirements"
+        echo "  - Milestones and deliverables"
+        echo ""
+        echo "Example: $0 iterate ./project-plan.md"
+        echo "         $0 iterate ./project-plan.md 2"
+        exit 1
+    fi
+    
+    local plan_file=$1
+    local iteration_num=${2:-1}
+    
+    if [ ! -f "$plan_file" ]; then
+        print_error "Plan file not found: $plan_file"
+        exit 1
+    fi
+    
+    print_header "Running Interactive Iteration $iteration_num"
+    
+    # Check Claude CLI availability
+    if ! command -v claude >/dev/null 2>&1; then
+        print_error "Claude CLI not found. Please ensure Claude is installed."
+        exit 1
+    fi
+    
+    # Check for Codex if enabled
+    if [ "${CODEX_ENABLED:-false}" = "true" ]; then
+        if check_codex_availability; then
+            print_success "Codex integration enabled"
+        else
+            print_warning "Codex integration requested but not available"
+        fi
+    fi
+    
+    # Run the interactive iteration
+    exec "$CORE_DIR/interactive_loop.sh" "$plan_file" "$iteration_num"
+}
+
+# Show agent status
+show_status() {
+    print_header "Agent Status"
+    
+    # Check for recent logs
+    if [ -d "$AGENT_LOG_DIR" ]; then
+        echo "Recent agent activity:"
+        find "$AGENT_LOG_DIR" -name "*.log" -mtime -1 -exec basename {} \; | while read -r log; do
+            echo "  - $log ($(stat -f "%Sm" -t "%Y-%m-%d %H:%M" "$AGENT_LOG_DIR/$log" 2>/dev/null || stat -c "%y" "$AGENT_LOG_DIR/$log" 2>/dev/null | cut -d' ' -f1-2))"
+        done
+    else
+        print_warning "No agent logs found"
+    fi
+    
+    echo ""
+    echo "Current configuration:"
+    echo "  - Log directory: $AGENT_LOG_DIR"
+    echo "  - Memory directory: $MEMORY_DIR"
+    echo "  - Codex enabled: ${CODEX_ENABLED:-false}"
+    echo "  - Megathink interval: ${MEGATHINK_INTERVAL:-4}"
+    
+    # Check for active todo items
+    if command -v claude >/dev/null 2>&1; then
+        echo ""
+        echo "Checking for active tasks..."
+        # This would need to be implemented with Claude's todo system
+    fi
+}
+
+# View agent logs
+view_logs() {
+    local agent=${1:-all}
+    
+    print_header "Agent Logs"
+    
+    if [ "$agent" = "all" ]; then
+        # Show all recent logs
+        find "$AGENT_LOG_DIR" -name "*.log" -mtime -1 | while read -r log; do
+            echo "=== $(basename "$log") ==="
+            tail -20 "$log"
+            echo ""
+        done
+    else
+        # Show specific agent log
+        local log_file="$AGENT_LOG_DIR/${agent}.log"
+        if [ -f "$log_file" ]; then
+            tail -50 "$log_file"
+        else
+            print_error "No log found for agent: $agent"
+        fi
+    fi
+}
+
+# Clean up old logs
+cleanup_logs() {
+    print_header "Cleaning Up Old Logs"
+    
+    # Remove logs older than 7 days
+    find "$AGENT_LOG_DIR" -name "*.log" -mtime +7 -delete
+    find "$MEMORY_DIR/agents" -name "iteration_*.md" -mtime +30 -delete
+    
+    print_success "Cleanup complete"
+}
+
+# Main command handler
+main() {
+    case "${1:-help}" in
+        "start")
+            start_agents
+            ;;
+        "iterate")
+            iterate_agents
+            ;;
+        "status")
+            show_status
+            ;;
+        "logs")
+            shift
+            view_logs "$@"
+            ;;
+        "cleanup")
+            cleanup_logs
+            ;;
+        "help"|"--help"|"-h")
+            cat <<EOF
+${BLUE}Claudebox Multi-Agent Framework${NC}
+
+Interactive development iterations with specialized agents.
+
+${GREEN}Commands:${NC}
+  iterate <plan> [n] Run iteration n with interactive Q&A
+  status             Show current agent status and configuration
+  logs [agent]       View agent logs (all or specific agent)
+  cleanup            Remove old logs and temporary files
+  help               Show this help message
+
+${GREEN}Workflow:${NC}
+  1. Create a plan.md file with your project goals
+  2. Run: $0 iterate plan.md
+  3. Answer generated questions in vim
+  4. Agents execute based on your answers
+  5. Review results and run next iteration
+
+${GREEN}Agents:${NC}
+  planner            Selects tasks based on plan + answers
+  developer          Implements the selected tasks
+  reviewer           Reviews code quality and security
+  tester             Validates functionality
+
+${GREEN}Configuration:${NC}
+  CODEX_ENABLED      Enable GPT-4 code review (true/false)
+  OPENAI_API_KEY     API key for Codex integration
+  AGENT_LOG_DIR      Directory for agent logs
+
+${GREEN}Examples:${NC}
+  # First iteration
+  $0 iterate project-plan.md
+  
+  # Continue with iteration 2
+  $0 iterate project-plan.md 2
+  
+  # With Codex enabled
+  CODEX_ENABLED=true OPENAI_API_KEY=sk-... $0 iterate plan.md
+  
+  # View logs
+  $0 logs developer
+
+${BLUE}Features:${NC}
+- Opus-powered question generation for each iteration
+- Interactive vim session to guide development
+- Context-aware task selection
+- Persistent memory across iterations
+EOF
+            ;;
+        *)
+            print_error "Unknown command: $1"
+            echo "Run '$0 help' for usage information"
+            exit 1
+            ;;
+    esac
+}
+
+# Run main with all arguments
+main "$@"

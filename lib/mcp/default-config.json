@@ -1,0 +1,24 @@
+{
+  "mcpServers": {
+    "memory": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-memory"]
+    },
+    "sequential-thinking": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"]
+    },
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp"]
+    },
+    "openrouterai": {
+      "command": "npx",
+      "args": ["-y", "@mcpservers/openrouterai"],
+      "env": {
+        "OPENROUTER_API_KEY": "${OPENROUTER_API_KEY:-}",
+        "OPENROUTER_DEFAULT_MODEL": "${OPENROUTER_DEFAULT_MODEL:-}"
+      }
+    }
+  }
+}
