@@ -30,19 +30,32 @@ info "🚀 Claude Bootstrap - Setting up Claude Desktop/Code with QoL features"
 echo
 
 # Check if Claude Desktop or Claude Code is installed
-if [[ ! -d "$CLAUDE_CONFIG_DIR" ]]; then
-    # Check for Claude Desktop app on macOS
-    if [[ -d "/Applications/Claude.app" ]]; then
-        # Claude Desktop is installed but config dir doesn't exist yet
+claude_found=false
+
+# Check for Claude Desktop app on macOS
+if [[ -d "/Applications/Claude.app" ]]; then
+    claude_found=true
+    info "Claude Desktop detected at /Applications/Claude.app"
+    # Ensure config directory exists
+    if [[ ! -d "$CLAUDE_CONFIG_DIR" ]]; then
         mkdir -p "$CLAUDE_CONFIG_DIR"
-        info "Claude Desktop detected. Creating configuration directory..."
-    elif command -v claude &> /dev/null; then
-        # Claude Code CLI is installed
-        mkdir -p "$CLAUDE_CONFIG_DIR"
-        info "Claude Code CLI detected. Creating configuration directory..."
-    else
-        error "Neither Claude Desktop nor Claude Code CLI found. Please install Claude Desktop or Claude Code first."
+        info "Creating configuration directory..."
     fi
+elif command -v claude &> /dev/null; then
+    # Claude Code CLI is installed
+    claude_found=true
+    info "Claude Code CLI detected"
+    # Ensure config directory exists
+    if [[ ! -d "$CLAUDE_CONFIG_DIR" ]]; then
+        mkdir -p "$CLAUDE_CONFIG_DIR"
+        info "Creating configuration directory..."
+    fi
+elif [[ -d "$CLAUDE_CONFIG_DIR" ]]; then
+    # Config directory exists, assume Claude is installed
+    claude_found=true
+    info "Claude configuration directory found"
+else
+    error "Neither Claude Desktop nor Claude Code CLI found. Please install Claude Desktop or Claude Code first."
 fi
 
 # Function to backup existing config
