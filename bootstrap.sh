@@ -26,12 +26,19 @@ git clone "$REPO_URL" "$TEMP_DIR" || error "Failed to clone repository"
 cd "$TEMP_DIR"
 readonly SCRIPT_DIR="$TEMP_DIR"
 
-info "🚀 Claude Bootstrap - Setting up Claude Desktop with QoL features"
+info "🚀 Claude Bootstrap - Setting up Claude Desktop/Code with QoL features"
 echo
 
-# Check if Claude Desktop is installed
+# Check if Claude Desktop or Claude Code is installed
 if [[ ! -d "$CLAUDE_CONFIG_DIR" ]]; then
-    error "Claude Desktop not found. Please install Claude Desktop first."
+    # Check for Claude Code CLI
+    if ! command -v claude &> /dev/null; then
+        error "Neither Claude Desktop nor Claude Code CLI found. Please install Claude Desktop or Claude Code first."
+    else
+        # Claude Code is installed, create config directory
+        mkdir -p "$CLAUDE_CONFIG_DIR"
+        info "Claude Code CLI detected. Creating configuration directory..."
+    fi
 fi
 
 # Function to backup existing config
@@ -338,7 +345,7 @@ main() {
     info "Next steps:"
     info "1. Add your API keys to: $HOME/.claude_env"
     info "2. Restart your terminal or run: source $HOME/.claude_env"
-    info "3. Restart Claude Desktop to load new configuration"
+    info "3. Restart Claude Desktop (if using) to load new configuration"
     echo
     info "APM Commands are available in: $HOME/.claude/commands/"
     info "Agent Prompts are available in: $HOME/.claude/prompts/"
