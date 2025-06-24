@@ -3,9 +3,7 @@
 ## quick start
 
 ```bash
-curl https://raw.githubusercontent.com/samjtro/claude/refs/heads/main/bootstrap.sh > bootstrap.sh \
-chmod +x bootstrap.sh \
-./bootstrap.sh
+curl https://raw.githubusercontent.com/samjtro/claude/refs/heads/main/bootstrap.sh > bootstrap.sh && chmod +x bootstrap.sh && ./bootstrap.sh
 ```
 
 The bootstrap script will:
